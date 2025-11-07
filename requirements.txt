@@ -1,0 +1,10 @@
+Flask
+pandas
+requests
+ta
+websocket-client
+numpy
+selenium
+sseclient-py
+webdriver-manager
+requests
