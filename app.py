@@ -200,11 +200,5 @@ def manual_check_mhi_t5_api():
     return jsonify(b.trigger_manual_mhi_t5(TODOS_OS_ATIVOS_DISPONIVEIS))
 
 if __name__ == '__main__':
-    try:
-        # Em produção, use um servidor WSGI real em vez do app.run()
-        threading.Thread(target=lambda: app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False), daemon=True).start()
-        print("\n🔥 Aguardando logins de usuários no painel...\nDigite 'sair' para finalizar.")
-        while True:
-            if input("").strip().lower() == "sair": break
-    except: pass
-    finally: os.kill(os.getpid(), signal.SIGINT)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host="0.0.0.0", port=port)
