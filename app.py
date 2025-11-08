@@ -1,4 +1,4 @@
-﻿# app.py
+# app.py
 import threading
 import json
 import copy
@@ -114,9 +114,7 @@ def get_config_api():
         "breakout_sma_body_mult": c.get("BREAKOUT_SMA_BODY_MULT", 2.0),
         "breakout_sma_avg_period": c.get("BREAKOUT_SMA_AVG_PERIOD", 20),
         # --- Fim ---
-        "ativos": c.get("ATIVOS", []),
-        "telegram_token": c.get("TELEGRAM_TOKEN", ""),
-        "telegram_chat_id": c.get("TELEGRAM_CHAT_ID", "")
+        "ativos": c.get("ATIVOS", [])
     })
 
 @app.route("/api/update_strategy", methods=["POST"])
@@ -162,16 +160,6 @@ def update_settings_api():
     if d.get("breakout_sma_avg_period") is not None: c["BREAKOUT_SMA_AVG_PERIOD"] = int(d["breakout_sma_avg_period"])
     # --- Fim ---
 
-    save_c(c); b.update_config(c)
-    return jsonify({"status": "success"})
-
-@app.route("/api/update_telegram", methods=["POST"])
-def update_telegram_api():
-    u, c, b = get_ucb()
-    if not u: return jsonify({"status": "error"}), 401
-    d = request.json or {}
-    c["TELEGRAM_TOKEN"] = d.get("telegram_token", "").strip()
-    c["TELEGRAM_CHAT_ID"] = d.get("telegram_chat_id", "").strip() 
     save_c(c); b.update_config(c)
     return jsonify({"status": "success"})
 
