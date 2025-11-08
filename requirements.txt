@@ -8,3 +8,4 @@ selenium
 sseclient-py
 webdriver-manager
 requests
+gunicorn
