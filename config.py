@@ -1,4 +1,4 @@
-﻿# config.py
+# config.py
 import threading
 import queue
 from datetime import datetime
@@ -15,8 +15,8 @@ TODOS_OS_ATIVOS_DISPONIVEIS = ["btcusdt", "ethusdt", "bnbusdt", "memeusdt", "sol
 # Estas são as configurações que um usuário recebe quando faz login
 DEFAULT_CONFIG = {
     # --- Seção de Telegram do Usuário ---
-    "TELEGRAM_TOKEN": "",
-    "TELEGRAM_CHAT_ID": "",
+    "TELEGRAM_TOKEN": "7492983954:AAEF7u9TIz2i8tVjWgjdE2JJhRQeUw478D0", # <-- COLOQUE SEU TOKEN AQUI
+    "TELEGRAM_CHAT_ID": "-1002868221349", # <-- COLOQUE SEU ID AQUI
     
     # --- Estratégias Ativas ---
     "USAR_ESTRATEGIA_BOLLINGER_RT": True,
@@ -83,5 +83,5 @@ DEFAULT_CONFIG = {
 USUARIOS = {
     "traderbr": "ebinex",
     "rodrigo": "rodrigo",
-    "cliente_c": "outrasenha"
+    "123": "123"
 }
