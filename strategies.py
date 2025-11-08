@@ -24,7 +24,7 @@ def verificar_filtro_macd_rsi(df_com_rt, direcao_sinal):
         if direcao_sinal == "COMPRA":
             tendencia_alta = (macd_line > signal_line)
             histograma_crescente = (hist > hist_prev) and (hist_prev > hist_2prev)
-            cruzou_macd = (macd_line > signal_line and macd_line.iloc[-2] < signal_line.iloc[-2])
+            cruzou_macd = (macd_line > signal_line and macd.macd().iloc[-2] < macd.macd_signal().iloc[-2]) 
             if (tendencia_alta and histograma_crescente) or cruzou_macd:
                 return True # Permitido (MACD confirma alta)
             else:
@@ -33,7 +33,7 @@ def verificar_filtro_macd_rsi(df_com_rt, direcao_sinal):
         elif direcao_sinal == "VENDA":
             tendencia_baixa = (macd_line < signal_line)
             histograma_decrescente = (hist < hist_prev) and (hist_prev < hist_2prev)
-            cruzou_macd = (macd_line < signal_line and macd_line.iloc[-2] > signal_line.iloc[-2])
+            cruzou_macd = (macd_line < signal_line and macd.macd().iloc[-2] > macd.macd_signal().iloc[-2]) 
             if (tendencia_baixa and histograma_decrescente) or cruzou_macd:
                 return True # Permitido (MACD confirma baixa)
             else:
@@ -54,7 +54,7 @@ def verificar_rsi_reentry_realtime(bot, par, k, df_historico, is_last_10_seconds
     rsi_ls = config.get('RSI_LIMITE_SUPERIOR', 70)
     rsi_li = config.get('RSI_LIMITE_INFERIOR', 30)
     confianca_rsi = config.get('CONFIANCA_RSI', 0.85)
-    usar_filtro_macd_rsi = config.get('RSI_USE_MACD_FILTER', False) # <-- Padrão False
+    usar_filtro_macd_rsi = config.get('RSI_USE_MACD_FILTER', False) 
 
     if df_historico is None or len(df_historico) < rsi_p + 3:
         return None
@@ -79,7 +79,6 @@ def verificar_rsi_reentry_realtime(bot, par, k, df_historico, is_last_10_seconds
         rsi_atual = rsi_series.iloc[-1]
         rsi_anterior_fechada = rsi_series.iloc[-2]
 
-        # Usa o lock e o estado DA INSTÂNCIA do bot
         with bot.rsi_lock:
             if par not in bot.rsi_estado_anterior:
                 bot.rsi_estado_anterior[par] = {
@@ -111,18 +110,16 @@ def verificar_rsi_reentry_realtime(bot, par, k, df_historico, is_last_10_seconds
                     motivo_sinal = "RSI cruzou sobrecompra"
 
             if direcao_sinal:
-                # Se o sinal foi armado, checa o filtro MACD (se estiver ligado)
                 if usar_filtro_macd_rsi:
                     if verificar_filtro_macd_rsi(df_com_rt, direcao_sinal):
                         sinal_armado = True
                         motivo_sinal += " + MACD OK"
                         confianca_final = round(confianca_rsi + 0.06, 2)
                     else:
-                        sinal_armado = False # Bloqueado pelo filtro
+                        sinal_armado = False 
                 else:
-                    sinal_armado = True # Filtro desligado, sinal permitido
+                    sinal_armado = True 
             
-            # Armazena ou remove o sinal potencial
             if sinal_armado:
                 bot.rsi_potencial_sinal[par] = {
                     'direcao': direcao_sinal,
@@ -141,13 +138,11 @@ def verificar_toque_bollinger_realtime(par, k, df_historico, config):
     std_dev_configurado = config.get('BOLLINGER_STD_DEV', 2.7)
     bollinger_periodo = config.get('BOLLINGER_PERIODO', 20)
     offset_percent = config.get('BOLLINGER_OFFSET_PERCENT', 0.0001)
-    # Filtro MACD Global removido daqui
-
+    
     if df_historico is None or len(df_historico) < 101:
         return None
     try:
         low_price, high_price = float(k['l']), float(k['h'])
-        preco_atual = float(k['c'])
         
         bollinger = ta.volatility.BollingerBands(df_historico['close'], window=bollinger_periodo, window_dev=std_dev_configurado)
         bb_upper = bollinger.bollinger_hband().iloc[-1]
@@ -160,8 +155,6 @@ def verificar_toque_bollinger_realtime(par, k, df_historico, config):
         if high_price >= (bb_upper * (1 + offset_percent)) and ma_100 > bb_upper:
             direcao_sinal = "VENDA"
             
-        # Filtro MACD Global removido daqui
-
         return direcao_sinal
     except Exception:
         return None
@@ -172,8 +165,7 @@ def verificar_sr_realtime(bot, par, k, df_historico):
     toques_necessarios = config.get('SR_TOQUES_NECESSARIOS', 3)
     tolerancia = config.get('SR_TOLERANCIA_PERCENT', 0.0005)
     distancia_min = config.get('SR_DISTANCIA_MIN_TOQUES', 15)
-    # Filtro MACD Global removido daqui
-
+    
     if df_historico is None or len(df_historico) < periodo:
         return None
 
@@ -184,7 +176,6 @@ def verificar_sr_realtime(bot, par, k, df_historico):
         
         preco_high_rt = float(k['h'])
         preco_low_rt = float(k['l'])
-        preco_atual = float(k['c'])
         ts_vela_atual = int(k['T']) // 60000 
 
         direcao_sinal = None
@@ -221,8 +212,6 @@ def verificar_sr_realtime(bot, par, k, df_historico):
                         toques_sup.clear()
                         direcao_sinal = "COMPRA"
         
-        # Filtro MACD Global removido daqui
-
         return direcao_sinal
     except Exception as e:
         print(f"[{bot.username}] Erro em verificar_sr_realtime {par}: {e}")
@@ -244,8 +233,7 @@ def verificar_mhi(par, df_historico, config):
         
         usar_filtro = config.get('MHI_USE_TREND_FILTER', True)
         trend_periodo = config.get('MHI_TREND_PERIODO', 100)
-        # Filtro MACD Global removido daqui
-
+        
         if usar_filtro:
             if len(df_historico) < trend_periodo: return None
             sma_trend = ta.trend.sma_indicator(df_historico['close'], window=trend_periodo).iloc[-1]
@@ -253,8 +241,6 @@ def verificar_mhi(par, df_historico, config):
             if direcao_dominante == "COMPRA" and preco_atual < sma_trend: return None
             if direcao_dominante == "VENDA" and preco_atual > sma_trend: return None
             
-        # Filtro MACD Global removido daqui
-        
         return direcao_dominante
     except Exception as e:
         print(f"Erro em verificar_mhi {par}: {e}\n{traceback.format_exc()}")
@@ -267,7 +253,6 @@ def verificar_t5(par, df_historico, config):
         if df_historico is None or len(df_historico) < 5: return None
 
         pavio_min_ratio = config.get('T5_PAVIO_MIN_RATIO', 2.0)
-        # Filtro MACD Global removido daqui
         
         bloco_5m = df_historico.iloc[-5:]
         vela_43 = bloco_5m.iloc[-2]
@@ -300,8 +285,6 @@ def verificar_t5(par, df_historico, config):
             if (vela_43_verde and vela_44_verde) or (vela_43_vermelha and vela_44_verde):
                 direcao_t5 = "VENDA"
                 
-        # Filtro MACD Global removido daqui
-        
         return direcao_t5
     except Exception as e:
         print(f"Erro em verificar_t5 {par}: {e}\n{traceback.format_exc()}")
@@ -322,10 +305,8 @@ def verificar_p3v_realtime(bot, par, k, df_historico, is_pre_alert_window, is_la
     """
     config = bot.config
     periodo_vwma = config.get("P3V_VWMA_PERIODO", 30) 
-    # Filtro MACD Global removido daqui
     
-    # *** CORREÇÃO DO BUG (image_2568bf.png) ***
-    # Precisamos de 2 velas fechadas + a vela atual + dados suficientes para VWMA
+    # *** CORREÇÃO DO BUG (image_321fe1.png / image_66629c.png) ***
     if df_historico is None or len(df_historico) < (periodo_vwma + 2):
         return None
 
@@ -383,10 +364,8 @@ def verificar_p3v_realtime(bot, par, k, df_historico, is_pre_alert_window, is_la
                 preco_open < vwma_atual and 
                 preco_close < vwma_atual):  
                 direcao_sinal = "VENDA"
-
-        # 6. Filtro MACD Global (REMOVIDO)
-
-        # 7. Armar o Sinal (para o bot_manager pegar na janela de 20s ou 10s)
+        
+        # 6. Armar o Sinal (para o bot_manager pegar na janela de 20s ou 10s)
         if direcao_sinal:
             with bot.p3v_lock: 
                 bot.p3v_potencial_sinal[par] = { 
@@ -408,12 +387,12 @@ def verificar_p3v_realtime(bot, par, k, df_historico, is_pre_alert_window, is_la
             bot.p3v_potencial_sinal.pop(par, None) 
         return None
 
-# --- [NOVA ESTRATÉGIA BREAKOUT SMA (Vela 2x)] ---
+# --- [ESTRATÉGIA BREAKOUT SMA (Vela 2x) - LÓGICA CORRIGIDA] ---
 
 def verificar_breakout_sma(bot, par, k, df_historico, is_pre_alert_window, is_last_12_seconds):
     """
-    Estratégia Breakout SMA: Vela rompe SMAs 5 e 7 com corpo 2x maior que a média.
-    Modifica 'bot.breakout_potencial_sinal'.
+    Estratégia Breakout SMA: Apenas VENDA.
+    Checa se a vela ABRIU ACIMA e FECHOU ABAIXO (ROMPEU).
     """
     config = bot.config
     sma_curta_p = config.get("BREAKOUT_SMA_CURTA", 5)
@@ -421,55 +400,58 @@ def verificar_breakout_sma(bot, par, k, df_historico, is_pre_alert_window, is_la
     body_mult = config.get("BREAKOUT_SMA_BODY_MULT", 2.0)
     avg_period = config.get("BREAKOUT_SMA_AVG_PERIOD", 20)
     
-    if df_historico is None or len(df_historico) < (avg_period + 1):
+    # +2 para garantir que temos a vela T-1 e T-0
+    if df_historico is None or len(df_historico) < (avg_period + 2):
         return None
 
     try:
-        # 1. Dados da Vela Atual (Realtime)
-        preco_open = float(k['o'])
-        preco_close = float(k['c'])
-        corpo_vela_rt = abs(preco_close - preco_open)
+        # 1. Dados da Vela Atual (Realtime T-0)
+        preco_open_rt = float(k['o'])
+        preco_close_rt = float(k['c'])
+        corpo_vela_rt = abs(preco_close_rt - preco_open_rt)
         
-        vela_rt_verde = preco_close > preco_open
-        vela_rt_vermelha = preco_close < preco_open
+        vela_rt_vermelha = preco_close_rt < preco_open_rt
 
-        # 2. Dados Históricos (para médias)
+        # 2. Dados Históricos
         df_temp = df_historico.copy()
         
-        # Calcula a média do corpo das velas anteriores
-        corpos_historicos = abs(df_temp['close'] - df_temp['open'])
-        media_corpo = corpos_historicos.rolling(window=avg_period).mean().iloc[-1]
-        
-        # Adiciona vela atual para calcular SMAs
+        # 2a. Calcular SMAs da vela ATUAL (T-0)
         ts_atual = pd.to_datetime(k['T'], unit='ms')
         vela_atual_rt_dados = {
-            'open': preco_open, 'high': float(k['h']), 'low': float(k['l']),
-            'close': preco_close, 'volume': float(k['v'])
+            'open': preco_open_rt, 'high': float(k['h']), 'low': float(k['l']),
+            'close': preco_close_rt, 'volume': float(k['v'])
         }
         vela_atual_series = pd.DataFrame([vela_atual_rt_dados], index=[ts_atual])
         df_com_rt = pd.concat([df_temp, vela_atual_series])
-
-        # Calcula SMAs
-        sma_curta = ta.trend.sma_indicator(df_com_rt['close'], window=sma_curta_p).iloc[-1]
-        sma_longa = ta.trend.sma_indicator(df_com_rt['close'], window=sma_longa_p).iloc[-1]
+        
+        sma_curta_rt = ta.trend.sma_indicator(df_com_rt['close'], window=sma_curta_p).iloc[-1]
+        sma_longa_rt = ta.trend.sma_indicator(df_com_rt['close'], window=sma_longa_p).iloc[-1]
+        
+        # 2b. Calcular média do corpo (usando dados T-1)
+        corpos_historicos = abs(df_temp['close'] - df_temp['open'])
+        media_corpo = corpos_historicos.rolling(window=avg_period).mean().iloc[-1]
 
         # 3. Checar Padrões e Filtros
         direcao_sinal = None
-
-        # Filtro de Tamanho: Vela RT deve ser 2x maior que a média
-        if corpo_vela_rt > (media_corpo * body_mult):
+        
+        # --- CORREÇÃO (image_84d399.png): Lógica de ROMPIMENTO ---
+        
+        # Padrão de VENDA: 
+        # 1. Vela RT é Vermelha
+        # 2. Vela RT tem corpo 2x+
+        # 3. Vela RT ABRIU (open) ACIMA de pelo menos uma das médias
+        # 4. Vela RT FECHOU (close) ABAIXO de AMBAS as médias
+        
+        if (vela_rt_vermelha and 
+            (corpo_vela_rt > (media_corpo * body_mult)) and 
+            (preco_open_rt > sma_curta_rt or preco_open_rt > sma_longa_rt) and
+            (preco_close_rt < sma_curta_rt and preco_close_rt < sma_longa_rt)):
             
-            # Padrão de COMPRA: Vela Verde fecha acima de ambas as médias
-            if vela_rt_verde and (preco_close > sma_curta) and (preco_close > sma_longa):
-                direcao_sinal = "COMPRA"
-                
-            # Padrão de VENDA: Vela Vermelha fecha abaixo de ambas as médias
-            elif vela_rt_vermelha and (preco_close < sma_curta) and (preco_close < sma_longa):
-                direcao_sinal = "VENDA"
+            direcao_sinal = "VENDA"
         
-        # 4. Filtro MACD Global (REMOVIDO)
+        # --- FIM DA CORREÇÃO ---
         
-        # 5. Armar o Sinal (para o bot_manager pegar na janela de 20s ou 12s)
+        # 4. Armar o Sinal (para o bot_manager pegar na janela de 20s ou 12s)
         if direcao_sinal:
             with bot.breakout_lock: 
                 bot.breakout_potencial_sinal[par] = { 

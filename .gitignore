@@ -1,8 +1,23 @@
+# Ignorar arquivos temporários e de cache
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignorar perfis de navegador e caches
+browser_profile/
+Driver_Notes/
 *.log
+*.dat
 *.db
-*.sqlite3
-User Data/
+*.sqlite
+*.lock
+
+# Ignorar ambiente virtual, se existir
 venv/
-node_modules/
-.env
+env/
+
+# Ignorar executáveis
+*.exe
+*.dll
+*.bin
