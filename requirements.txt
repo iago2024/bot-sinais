@@ -4,6 +4,7 @@ requests
 ta
 websocket-client
 numpy
+waitress
 selenium
 sseclient-py
 webdriver-manager
