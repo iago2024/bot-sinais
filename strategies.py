@@ -389,27 +389,19 @@ def verificar_p3v_realtime(bot, par, k, df_historico, is_pre_alert_window, is_la
 
 # --- [ESTRATÉGIA BREAKOUT SMA (Vela 2x) - LÓGICA CORRIGIDA] ---
 
-# --- [ESTRATÉGIA BREAKOUT SMA (Vela 2x) - LÓGICA CORRIGIDA] ---
-
 def verificar_breakout_sma(bot, par, k, df_historico, is_pre_alert_window, is_last_12_seconds):
     """
     Estratégia Breakout SMA: Apenas VENDA.
     Checa se a vela ABRIU ACIMA e FECHOU ABAIXO (ROMPEU).
-    USA FILTRO DE TAMANHO MÍNIMO PERCENTUAL.
     """
     config = bot.config
     sma_curta_p = config.get("BREAKOUT_SMA_CURTA", 5)
     sma_longa_p = config.get("BREAKOUT_SMA_LONGA", 7)
+    body_mult = config.get("BREAKOUT_SMA_BODY_MULT", 2.0)
+    avg_period = config.get("BREAKOUT_SMA_AVG_PERIOD", 20)
     
-    # --- LÓGICA DE TAMANHO MÍNIMO ---
-    # Define um tamanho mínimo de corpo em % do preço. 
-    # Ex: 0.0005 = 0.05% do preço do ativo.
-    # Esquece 'avg_period' e 'body_mult' das versões anteriores.
-    min_body_percent = config.get("BREAKOUT_SMA_MIN_BODY_PERCENT", 0.0005) # 0.05%
-    # --- FIM DA LÓGICA ---
-    
-    # O mínimo de histórico que precisamos é para a SMA mais longa
-    if df_historico is None or len(df_historico) < (sma_longa_p + 2):
+    # +2 para garantir que temos a vela T-1 e T-0
+    if df_historico is None or len(df_historico) < (avg_period + 2):
         return None
 
     try:
@@ -435,27 +427,29 @@ def verificar_breakout_sma(bot, par, k, df_historico, is_pre_alert_window, is_la
         sma_curta_rt = ta.trend.sma_indicator(df_com_rt['close'], window=sma_curta_p).iloc[-1]
         sma_longa_rt = ta.trend.sma_indicator(df_com_rt['close'], window=sma_longa_p).iloc[-1]
         
-        # --- LÓGICA DE TAMANHO MÍNIMO ---
-        # 2b. Calcular o tamanho mínimo exigido em preço
-        # Comparamos o corpo da vela com o 'tamanho mínimo'
-        tamanho_minimo_exigido = preco_close_rt * min_body_percent
-        # --- FIM DA LÓGICA ---
+        # 2b. Calcular média do corpo (usando dados T-1)
+        corpos_historicos = abs(df_temp['close'] - df_temp['open'])
+        media_corpo = corpos_historicos.rolling(window=avg_period).mean().iloc[-1]
 
         # 3. Checar Padrões e Filtros
         direcao_sinal = None
         
+        # --- CORREÇÃO (image_84d399.png): Lógica de ROMPIMENTO ---
+        
         # Padrão de VENDA: 
         # 1. Vela RT é Vermelha
-        # 2. Vela RT tem corpo > (preço * min_body_percent) <-- CONDIÇÃO MODIFICADA
+        # 2. Vela RT tem corpo 2x+
         # 3. Vela RT ABRIU (open) ACIMA de pelo menos uma das médias
         # 4. Vela RT FECHOU (close) ABAIXO de AMBAS as médias
         
         if (vela_rt_vermelha and 
-            (corpo_vela_rt > tamanho_minimo_exigido) and  # <-- CONDIÇÃO MODIFICADA
+            (corpo_vela_rt > (media_corpo * body_mult)) and 
             (preco_open_rt > sma_curta_rt or preco_open_rt > sma_longa_rt) and
             (preco_close_rt < sma_curta_rt and preco_close_rt < sma_longa_rt)):
             
             direcao_sinal = "VENDA"
+        
+        # --- FIM DA CORREÇÃO ---
         
         # 4. Armar o Sinal (para o bot_manager pegar na janela de 20s ou 12s)
         if direcao_sinal:
