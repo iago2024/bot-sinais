@@ -114,7 +114,9 @@ def get_config_api():
         "breakout_sma_body_mult": c.get("BREAKOUT_SMA_BODY_MULT", 2.0),
         "breakout_sma_avg_period": c.get("BREAKOUT_SMA_AVG_PERIOD", 20),
         # --- Fim ---
-        "ativos": c.get("ATIVOS", [])
+        "ativos": c.get("ATIVOS", []),
+        "telegram_token": c.get("TELEGRAM_TOKEN", ""),
+        "telegram_chat_id": c.get("TELEGRAM_CHAT_ID", "")
     })
 
 @app.route("/api/update_strategy", methods=["POST"])
@@ -163,6 +165,16 @@ def update_settings_api():
     save_c(c); b.update_config(c)
     return jsonify({"status": "success"})
 
+@app.route("/api/update_telegram", methods=["POST"])
+def update_telegram_api():
+    u, c, b = get_ucb()
+    if not u: return jsonify({"status": "error"}), 401
+    d = request.json or {}
+    c["TELEGRAM_TOKEN"] = d.get("telegram_token", "").strip()
+    c["TELEGRAM_CHAT_ID"] = d.get("telegram_chat_id", "").strip() 
+    save_c(c); b.update_config(c)
+    return jsonify({"status": "success"})
+
 @app.route("/api/update_asset", methods=["POST"])
 def update_asset_api():
     u, c, b = get_ucb()
@@ -188,5 +200,11 @@ def manual_check_mhi_t5_api():
     return jsonify(b.trigger_manual_mhi_t5(TODOS_OS_ATIVOS_DISPONIVEIS))
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host="0.0.0.0", port=port)
+    try:
+        # Em produção, use um servidor WSGI real em vez do app.run()
+        threading.Thread(target=lambda: app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False), daemon=True).start()
+        print("\n🔥 Aguardando logins de usuários no painel...\nDigite 'sair' para finalizar.")
+        while True:
+            if input("").strip().lower() == "sair": break
+    except: pass
+    finally: os.kill(os.getpid(), signal.SIGINT)
