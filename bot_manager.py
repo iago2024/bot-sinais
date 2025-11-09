@@ -64,12 +64,6 @@ class BotManager:
         self.iniciar_workers()
         self.iniciar_ativos_da_config()
         self.publish_active_assets_update()
-        
-        # --- NOVO: Envia mensagem de teste do Telegram na inicialização ---
-        if self.config.get("TELEGRAM_TOKEN") and self.config.get("TELEGRAM_CHAT_ID"):
-            print(f"[{self.username}] Config de Telegram encontrada. Enviando mensagem de teste...")
-            threading.Thread(target=self._send_connection_test_message, daemon=True).start()
-        # --- FIM NOVO ---
 
     def iniciar_workers(self):
         print(f"[{self.username}] Iniciando workers...")
@@ -111,7 +105,9 @@ class BotManager:
             print(f"[{self.username}] Lista de ativos mudou. Enviando atualização para o agente local.")
             self.publish_active_assets_update()
 
-        # --- Bloco IF de teste de conexão foi REMOVIDO מכאן ---
+        if (new_token != old_token or new_chat_id != old_chat_id) and (new_token and new_chat_id):
+            print(f"[{self.username}] Novos dados de Telegram salvos. Enviando mensagem de teste...")
+            threading.Thread(target=self._send_connection_test_message, daemon=True).start()
 
     def _send_connection_test_message(self):
         time_sleep.sleep(1) 
