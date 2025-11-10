@@ -9,7 +9,7 @@ COOLDOWN_MINUTOS = 1
 BOLLINGER_PERIODO = 20
 
 # Lista de todos os ativos que podem ser escolhidos
-TODOS_OS_ATIVOS_DISPONIVEIS = ["btcusdt", "ethusdt", "bnbusdt", "memeusdt", "solusdt", "adausdt"]
+TODOS_OS_ATIVOS_DISPONIVEIS = ["btcusdt", "ethusdt", "bnbusdt", "solusdt", "adausdt"]
 
 # --- Configurações Padrão para Novos Usuários ---
 # Estas são as configurações que um usuário recebe quando faz login
