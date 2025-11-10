@@ -31,8 +31,12 @@ def login():
     if u in USUARIOS and USUARIOS[u] == p:
         session['username'] = u; session['config'] = copy.deepcopy(DEFAULT_CONFIG); session.permanent = True
         with APP_LOCK:
-            if u not in USER_BOTS: USER_BOTS[u] = BotManager(u, session['config'])
-            else: USER_BOTS[u].update_config(session['config'])
+            if u not in USER_BOTS: 
+                print(f"--- [LOGIN] Criando BotManager para {u} ---")
+                USER_BOTS[u] = BotManager(u, session['config'])
+            else: 
+                print(f"--- [LOGIN] BotManager para {u} já existe, atualizando config ---")
+                USER_BOTS[u].update_config(session['config'])
         return jsonify({"success": True})
     return jsonify({"success": False})
 
@@ -47,26 +51,67 @@ def logout():
     if u:
         with APP_LOCK:
             bot = USER_BOTS.pop(u, None)
-            if bot: bot.shutdown()
+            if bot: 
+                print(f"--- [LOGOUT] Desligando BotManager para {u} ---")
+                bot.shutdown()
     return jsonify({"success": True})
 
+# --- MUDANÇA AQUI (Rota /stream corrigida para Pub/Sub) ---
 @app.route("/stream")
 def stream():
-    if 'username' not in session: return Response("Não autorizado", status=401)
+    if 'username' not in session: 
+        return Response("Não autorizado", status=401)
+    
     u = session['username']
-    with APP_LOCK: bot = USER_BOTS.get(u)
+    
+    with APP_LOCK: 
+        bot = USER_BOTS.get(u)
+    
+    # Esta é a lógica que pode criar o "gêmeo" se você usar múltiplos workers
     if not bot:
+        print(f"--- [STREAM] AVISO: Bot para {u} não encontrado. Criando um novo. ---")
+        print(f"--- [STREAM] Se você vê isso e o login foi feito, você está rodando múltiplos workers! ---")
         session['config'] = copy.deepcopy(DEFAULT_CONFIG)
-        with APP_LOCK: bot = BotManager(u, session['config']); USER_BOTS[u] = bot
-    q = bot.get_event_queue()
+        with APP_LOCK: 
+            # Dupla verificação para segurança de thread
+            if u not in USER_BOTS:
+                bot = BotManager(u, session['config'])
+                USER_BOTS[u] = bot
+            else:
+                bot = USER_BOTS.get(u)
+
+    # 1. Registra este cliente (agente ou site) e pega sua fila pessoal
+    try:
+        q = bot.register_listener()
+    except Exception as e:
+        print(f"[{u}] Erro fatal ao registrar ouvinte: {e}")
+        return Response(f"Erro ao registrar ouvinte: {e}", status=500)
+
     def event_stream():
         try:
             while True:
-                data = q.get(); 
-                if data is None: break
+                # 2. Ouve apenas a sua fila pessoal
+                data = q.get()
+                if data is None: # Sinal de desligamento
+                    print(f"[{u}] Recebido sinal de desligamento (None) no stream.")
+                    break
+                
+                # Envia o dado para o cliente
                 yield f"data: {json.dumps(data, default=str)}\n\n"
-        except GeneratorExit: pass
+        
+        except GeneratorExit:
+            # O cliente (agente ou navegador) fechou a conexão
+            print(f"[{u}] Cliente /stream desconectado (GeneratorExit).")
+        except Exception as e:
+            print(f"[{u}] Erro inesperado no event_stream: {e}")
+        finally:
+            # 3. Sempre desregistra a fila quando o cliente desconecta
+            print(f"[{u}] Desregistrando ouvinte...")
+            bot.unregister_listener(q)
+            print(f"[{u}] Ouvinte desregistrado.")
+    
     return Response(event_stream(), mimetype="text/event-stream")
+# --- FIM DA MUDANÇA ---
 
 def get_ucb():
     if 'username' not in session: return None, None, None
@@ -74,6 +119,7 @@ def get_ucb():
     with APP_LOCK: b = USER_BOTS.get(u)
     if not c: c = copy.deepcopy(DEFAULT_CONFIG); session['config'] = c
     if not b:
+        print(f"--- [get_ucb] AVISO: Bot para {u} não encontrado. Criando um novo. ---")
         with APP_LOCK:
             if u not in USER_BOTS: b = BotManager(u, c); USER_BOTS[u] = b
             else: b = USER_BOTS[u]
