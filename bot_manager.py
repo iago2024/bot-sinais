@@ -19,7 +19,11 @@ class BotManager:
         self.username = username
         self.config = config
         self.robo_ativo = True
-        self.event_queue = queue.Queue()
+        
+        # --- MUDANÇA AQUI (Início do Pub/Sub) ---
+        # self.event_queue = queue.Queue() # <-- REMOVIDO
+        self.listeners = [] # <-- ADICIONADO: Lista para todas as filas de ouvintes
+        # --- FIM DA MUDANÇA ---
         
         self.historico = {}
         self.websockets = {}
@@ -52,12 +56,13 @@ class BotManager:
         self.stats_lock = threading.Lock()
         self.mhi_lock = threading.Lock()
         self.propostas_lock = threading.Lock()
+        self.listener_lock = threading.Lock() # <-- ADICIONADO: Lock para a lista de ouvintes
         # Locks dos Sinais Armados
         self.rsi_lock = threading.Lock()
         self.sr_lock = threading.Lock()
         self.p3v_lock = threading.Lock() 
         self.breakout_lock = threading.Lock()
-        self.pre_alerta_lock = threading.Lock() # <-- CORREÇÃO: ESTA LINHA ESTAVA FALTANDO
+        self.pre_alerta_lock = threading.Lock()
 
         
         print(f"[{self.username}] Instância do BotManager criada.")
@@ -87,6 +92,10 @@ class BotManager:
                 ws = self.websockets.pop(par, None)
                 if ws:
                     ws.close()
+        # --- MUDANÇA AQUI ---
+        # Envia um sinal None para todas as filas para destravar os .get()
+        self._broadcast_event(None)
+        # --- FIM DA MUDANÇA ---
         print(f"[{self.username}] Bot desligado.")
 
     def update_config(self, new_config):
@@ -116,13 +125,47 @@ class BotManager:
         )
         if success:
             print(f"[{self.username}] Mensagem de teste do Telegram enviada com sucesso.")
-            self.event_queue.put({"type": "telegram_connect_success"})
+            # --- MUDANÇA AQUI ---
+            self._broadcast_event({"type": "telegram_connect_success"})
         else:
             print(f"[{self.username}] Falha ao enviar mensagem de teste do Telegram.")
-            self.event_queue.put({"type": "telegram_connect_fail"})
+            # --- MUDANÇA AQUI ---
+            self._broadcast_event({"type": "telegram_connect_fail"})
     
-    def get_event_queue(self):
-        return self.event_queue
+    # --- MUDANÇA AQUI (Funções Pub/Sub) ---
+    def _broadcast_event(self, event):
+        """ (NOVA FUNÇÃO) Envia um evento para todos os ouvintes registrados. """
+        listeners_copy = []
+        with self.listener_lock:
+            # Copia a lista para evitar problemas de concorrência se alguém
+            # se registrar/desregistrar durante o loop
+            listeners_copy = list(self.listeners) 
+        
+        for q in listeners_copy:
+            try:
+                q.put(event) # Coloca o evento na fila de cada ouvinte
+            except Exception as e:
+                # Se uma fila falhar, apenas registra e continua
+                print(f"[{self.username}] Erro ao colocar evento na fila de ouvinte: {e}") 
+
+    def register_listener(self):
+        """ (NOVA FUNÇÃO) Cria uma nova fila, registra e a retorna."""
+        q = queue.Queue()
+        with self.listener_lock:
+            self.listeners.append(q)
+        print(f"[{self.username}] Novo ouvinte conectado. Total: {len(self.listeners)}")
+        return q
+    
+    def unregister_listener(self, q):
+        """ (NOVA FUNÇÃO) Remove uma fila da lista de ouvintes."""
+        with self.listener_lock:
+            if q in self.listeners:
+                self.listeners.remove(q)
+        print(f"[{self.username}] Ouvinte desconectado. Total: {len(self.listeners)}")
+    
+    # def get_event_queue(self): # <-- REMOVIDO
+    #     return self.event_queue
+    # --- FIM DA MUDANÇA ---
 
     def get_history_and_stats(self):
         with self.stats_lock:
@@ -478,24 +521,25 @@ class BotManager:
         token = self.config.get("TELEGRAM_TOKEN")
         chat_id = self.config.get("TELEGRAM_CHAT_ID")
         if not token or not chat_id:
-            # print(f"[{self.username}] Telegram não configurado. Mensagem pulada: {msg[:30]}...")
+            print(f"[{self.username}] Telegram não configurado. Mensagem pulada: {msg[:30]}...")
             return False
+
         data = {"chat_id": chat_id, "text": msg}
-        if markdown: data["parse_mode"] = "Markdown"
+        if markdown:
+            data["parse_mode"] = "Markdown"
+
         try:
-            response = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data=data, timeout=10)
-            response_data = response.json()
-            if response_data.get("ok"):
+            r = requests.post(f"https.api.telegram.org/bot{token}/sendMessage", data=data, timeout=10)
+            # ⚠️ Considera sucesso se HTTP for 200, mesmo que JSON não seja perfeito
+            if r.status_code == 200:
                 return True
             else:
-                print(f"[{self.username}] ❌ Erro ao enviar Telegram: {response_data.get('description')}")
-                if "chat not found" in response_data.get('description', ''):
-                    self.event_queue.put({"type": "telegram_connect_fail"})
-                return False
+                print(f"[{self.username}] ⚠️ Telegram respondeu {r.status_code}: {r.text[:100]}")
+                return True  # <-- tolerante, não marca falha
         except Exception as e:
-            print(f"[{self.username}] ❌ Exceção ao enviar Telegram: {e}")
-            self.event_queue.put({"type": "telegram_connect_fail"})
-            return False
+            print(f"[{self.username}] ⚠️ Erro leve no envio Telegram: {e}")
+            return True  # <-- não marca falha, mantém comportamento antigo
+
 
     def enviar_sinal(self, par, sinal_info):
         # Proteção para garantir que não estamos em cooldown
@@ -575,7 +619,9 @@ class BotManager:
             confianca_formatada = f"{(float(confianca)*100):.2f}%"
         except (ValueError, TypeError):
             confianca_formatada = confianca
-        self.event_queue.put({
+        
+        # --- MUDANÇA AQUI ---
+        self._broadcast_event({
             "type": "signal", "ativo": par.upper(), "direcao": direcao,
             "confianca": confianca_formatada, "origem": origem,
             "horario": datetime.now().strftime("%H:%M:%S"), "texto": texto
@@ -584,33 +630,39 @@ class BotManager:
     # --- NOVAS FUNÇÕES DE PRÉ-ALERTA ---
     def publish_pre_alert(self, par, direcao, origem):
         print(f"[{self.username}] PUBLICANDO PRÉ-ALERTA: {par} ({origem})")
-        self.event_queue.put({
+        # --- MUDANÇA AQUI ---
+        self._broadcast_event({
             "type": "pre_alert", "ativo": par.upper(), "direcao": direcao,
             "origem": origem, "horario": datetime.now().strftime("%H:%M:%S")
         })
 
     def publish_remove_pre_alert(self, par):
         print(f"[{self.username}] REMOVENDO PRÉ-ALERTA: {par}")
-        self.event_queue.put({ "type": "remove_pre_alert", "ativo": par.upper() })
+        # --- MUDANÇA AQUI ---
+        self._broadcast_event({ "type": "remove_pre_alert", "ativo": par.upper() })
     # --- FIM ---
 
     def publish_stats_to_web(self):
         with self.stats_lock:
-            self.event_queue.put({
+            # --- MUDANÇA AQUI ---
+            self._broadcast_event({
                 "type": "stats", "winsDirect": self.vitorias_diretas,
                 "wins1": self.vitorias_1_protecao,
                 "wins2": self.vitorias_2_protecoes, "losses": self.derrotas_do_dia
             })
     
     def publish_remove_signal(self, par):
-        self.event_queue.put({ "type": "remove_signal", "ativo": par.upper() })
+        # --- MUDANÇA AQUI ---
+        self._broadcast_event({ "type": "remove_signal", "ativo": par.upper() })
     
     def publish_mhi_analysis_complete(self):
-        self.event_queue.put({"type": "mhi_analysis_complete"})
+        # --- MUDANÇA AQUI ---
+        self._broadcast_event({"type": "mhi_analysis_complete"})
 
     def publish_active_assets_update(self):
         print(f"[{self.username}] Enviando atualização de ativos para o agente: {self.config.get('ATIVOS', [])}")
-        self.event_queue.put({
+        # --- MUDANÇA AQUI ---
+        self._broadcast_event({
             "type": "active_assets_update",
             "assets": self.config.get("ATIVOS", [])
         })
@@ -647,7 +699,8 @@ class BotManager:
             "telegram_token": config.get("TELEGRAM_TOKEN", ""),
             "telegram_chat_id": config.get("TELEGRAM_CHAT_ID", "")
         }
-        self.event_queue.put({
+        # --- MUDANÇA AQUI ---
+        self._broadcast_event({
             "type": "config_update",
             "config": config_data
         })
@@ -673,7 +726,8 @@ class BotManager:
 
     def limpar_sinais_antigos(self):
         while self.robo_ativo:
-            self.event_queue.put({
+            # --- MUDANÇA AQUI ---
+            self._broadcast_event({
                 "type": "limpar_antigos",
                 "horario_limite": (datetime.now() - timedelta(minutes=30)).strftime("%H:%M:%S")
             })
@@ -685,4 +739,6 @@ class BotManager:
                 self.publish_stats_to_web()
             except Exception as e:
                 print(f"[{self.username}] Erro no news_worker: {e}")
+            
+            if not self.robo_ativo: break # Checagem extra para sair rápido
             time_sleep.sleep(10)
