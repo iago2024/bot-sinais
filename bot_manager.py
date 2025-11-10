@@ -477,7 +477,7 @@ class BotManager:
             print(f"[{self.username}] WS ABERTO {par.upper()}")
 
         try:
-            url = f"wss://stream.binance.com:9443/ws/{par}@kline_1m"
+            url = f"wss://stream.binance.us:9443/ws/{par}@kline_1m"
             ws_app = WebSocketApp(url, on_message=on_message, on_error=on_error, on_close=on_close, on_open=on_open)
             with self.ws_lock:
                 self.websockets[par] = ws_app 
